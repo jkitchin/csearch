@@ -1,0 +1,17 @@
+#+title: csearch - Google colaboratory search utilities
+
+See https://colab.research.google.com/drive/18LGMrJwKbAarHR36wWXZHHD-kS9Hblei for example usage.
+
+Installation:
+
+Run this cell in colab.
+
+#+BEGIN_SRC python
+pip install git+git://github.com/jkitchin/csearch
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC python
+import csearch
+#+END_SRC
