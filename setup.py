@@ -4,16 +4,16 @@ from setuptools import setup
 from glob import glob
 
 setup(name='csearch',
-      version='0.0.1',
+      version='0.0.2',
       description='colab utilities for searching notebooks in gdrive',
       url='',
       maintainer='John Kitchin',
       maintainer_email='jkitchin@andrew.cmu.edu',
       license='GPL',
       packages=['csearch'],
-      data_files=[('csearch/examples/', glob('csearch/examples/*.ipynb'))],
+      data_files=[('examples/', glob('csearch/examples/*.ipynb'))],
       long_description='''\
-Search colabs in gdrive with Ipython magic.
+Search colabs in gdrive with IPython magic.
 ===========================================
 
 %csearch "some path" -m Search
