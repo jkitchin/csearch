@@ -164,7 +164,7 @@ def find_ipynb(root='', recursive=True):
     '''
     if not root.startswith('/'):
         root = '/content/gdrive/' + root
-    print('root: ', root)
+
     return glob.glob(root + '/**/*.ipynb',
                      recursive=recursive)
 
