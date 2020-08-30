@@ -7,6 +7,7 @@ from IPython.core.magic import (register_line_magic, register_cell_magic,
                                 register_line_cell_magic)
 import nbformat
 import numpy as np
+import os
 import re
 import shlex
 from subprocess import getoutput, run
@@ -14,7 +15,9 @@ from subprocess import getoutput, run
 
 print('initializing csearch')
 run(['apt-get', 'install', 'xattr'])
-drive.mount('/content/gdrive')
+
+if not os.path.isdir('/content/gdrive'):
+    drive.mount('/content/gdrive')
 
 
 @register_line_magic
@@ -41,7 +44,7 @@ def properties(line, cell):
 
 
 @register_line_cell_magic
-def todo(line, cell):
+def todo(line, cell=None):
     '''A todo line/cell magic. It should have [optional duedate] description.
 
     '''
@@ -175,25 +178,31 @@ parser = argparse.ArgumentParser(description='Search Jupyter Notebooks')
 # %should be the default.
 parser.add_argument('root', nargs='?', default='',
                     help='Root directory to search in.')
+
 parser.add_argument('pattern', nargs='?', default=None,
-                    help='Pattern to search for.')
+                    help='Pattern to search for (default is to only search markdown.')
+
 parser.add_argument('-l', '--list', action='store_true',
                     help='list all notebooks')
+
 parser.add_argument('-r', '--recursive', action='store_true',
                     help='search recursively')
+
 parser.add_argument('-t', '--tags', nargs='+',
                     help='Search for tags')
+
 parser.add_argument('-f', '--function', nargs='+',
                     help='Search using a predicate function')
-parser.add_argument('-m', '--markdown', nargs='+',
-                    help='Search markdown cells')
+
 parser.add_argument('-c', '--code', nargs='+',
                     help='Search code cells')
 
 parser.add_argument('-p', '--property', nargs='+',
                     help='Search properties with key=pattern')
+
 parser.add_argument('-d', '--todo', nargs='+',
                     help='Search todo with patterns')
+
 parser.add_argument('-H', '--heading', nargs='+',
                     help='Search headings for patterns')
 
@@ -211,28 +220,33 @@ def csearch(line):
             display(f)
         return
 
-    if args.tags is not None:
-        for tag in args.tags:
-            P += [[f.search_tags(tag) for f in nb]]
+    # First search markdown
+    for pattern in args.pattern:
+        P += [[f.search_markdown(pattern) for f in nb]]
 
-    if args.function is not None:
-        pfunctions = [globals()[f] for f in args.function]
-        for predicate in pfunctions:
-            P += [[predicate(f) for f in nb]]
-
-    if args.markdown is not None:
-        for pattern in args.markdown:
-            P += [[f.search_markdown(pattern) for f in nb]]
-
+    # Then search code
     if args.code is not None:
         for pattern in args.code:
             P += [[f.search_code(pattern) for f in nb]]
 
+    # Search headings
     if args.heading is not None:
         # TODO some context here might also be helpful, but for now I use the
         # same pattern as above.
         for pattern in args.heading:
             P += [[f.search_headings(pattern) for f in nb]]
+
+
+
+    if args.tags is not None:
+        for tag in args.tags:
+            P += [[f.search_tags(tag) for f in nb]]
+
+    if args.property is not None:
+        for pattern in args.property:
+            key, pattern = pattern.split('=')
+            P += [[f.search_properties(key.strip(), pattern.strip())
+                   for f in nb]]
 
     if args.todo is not None:
         for pattern in args.todo:
@@ -242,15 +256,17 @@ def csearch(line):
                 # to get some context with the todo line.
                 f.search_todo(pattern)
 
-    if args.property is not None:
-        for pattern in args.property:
-            key, pattern = pattern.split('=')
-            P += [[f.search_properties(key.strip(), pattern.strip())
-                   for f in nb]]
+    if args.function is not None:
+        pfunctions = [eval(f) for f in args.function]
+        print(pfunctions)
+        for predicate in pfunctions:
+            P += [[predicate(f) for f in nb]]
 
     # Finally show all files that match all criteria
     inds = np.all(np.array(P), axis=0)
     nb = np.array(nb)
+
+    # We make sure we have an iterable collection to show these.
     from collections.abc import Iterable
     if isinstance(inds, Iterable):
         for x in nb[inds]:

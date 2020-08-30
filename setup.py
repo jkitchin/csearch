@@ -4,7 +4,7 @@ from setuptools import setup
 from glob import glob
 
 setup(name='csearch',
-      version='0.0.6',
+      version='0.0.8',
       description='colab utilities for searching notebooks in gdrive',
       url='',
       maintainer='John Kitchin',
