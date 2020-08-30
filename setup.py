@@ -11,7 +11,8 @@ setup(name='csearch',
       maintainer_email='jkitchin@andrew.cmu.edu',
       license='GPL',
       packages=['csearch'],
-      data_files=[('examples/', glob('csearch/examples/*.ipynb'))],
+      package_dir={'csearch': 'csearch'},
+      package_data={'csearch': ['examples/*.ipynb']},
       long_description='''\
 Search colabs in gdrive with IPython magic.
 ===========================================
