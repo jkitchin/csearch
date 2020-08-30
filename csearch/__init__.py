@@ -221,33 +221,38 @@ def csearch(line):
         return
 
     # First search markdown
-    for pattern in args.pattern:
-        P += [[f.search_markdown(pattern) for f in nb]]
+    if args.pattern:
+        for pattern in args.pattern:
+            P += [[f.search_markdown(pattern) for f in nb]]
 
     # Then search code
     if args.code is not None:
+        if args.code == []:
+            args.code = args.pattern
         for pattern in args.code:
             P += [[f.search_code(pattern) for f in nb]]
 
     # Search headings
     if args.heading is not None:
         # TODO some context here might also be helpful, but for now I use the
-        # same pattern as above.
+        # same pattern as above. I don't know how to get links to the heading
+        # anyway.
         for pattern in args.heading:
             P += [[f.search_headings(pattern) for f in nb]]
 
-
-
+    # Search for tags
     if args.tags is not None:
         for tag in args.tags:
             P += [[f.search_tags(tag) for f in nb]]
 
+    # Search properties
     if args.property is not None:
         for pattern in args.property:
             key, pattern = pattern.split('=')
             P += [[f.search_properties(key.strip(), pattern.strip())
                    for f in nb]]
 
+    # Search todo cells
     if args.todo is not None:
         for pattern in args.todo:
             for f in nb:
@@ -256,8 +261,9 @@ def csearch(line):
                 # to get some context with the todo line.
                 f.search_todo(pattern)
 
+    # Finally, we try the function search
     if args.function is not None:
-        pfunctions = [eval(f) for f in args.function]
+        pfunctions = [eval(f, globals()) for f in args.function]
         print(pfunctions)
         for predicate in pfunctions:
             P += [[predicate(f) for f in nb]]
