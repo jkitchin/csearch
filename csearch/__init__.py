@@ -161,8 +161,12 @@ class NB:
 # TODO: make sure this finds what I really mean. should we use a pattern here? I
 # am also unsure if I am doing paths right here.
 def find_ipynb(root='', recursive=True):
-    '''Find ipynb files in root.'''
-    return glob.glob('/content/gdrive/' + root + '/**/*.ipynb',
+    '''Find ipynb files in root.
+    If you want to search in your Drive, start the root with My Drive.
+    '''
+    if not root.startswith('/'):
+        root = '/content/gdrive/' + root
+    return glob.glob(root + '/**/*.ipynb',
                      recursive=recursive)
 
 
