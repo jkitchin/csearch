@@ -1,6 +1,7 @@
 # Copyright 2015-2019 John Kitchin
 # (see accompanying license files for details).
 from setuptools import setup
+from glob import glob
 
 setup(name='csearch',
       version='0.0.1',
@@ -10,6 +11,7 @@ setup(name='csearch',
       maintainer_email='jkitchin@andrew.cmu.edu',
       license='GPL',
       packages=['csearch'],
+      data_files=[('csearch/examples/', glob('csearch/examples/*.ipynb'))],
       long_description='''\
 Search colabs in gdrive with Ipython magic.
 ===========================================
@@ -17,6 +19,8 @@ Search colabs in gdrive with Ipython magic.
 %csearch "some path" -m Search
       ''')
 
+# [2020-08-30 Sun] Leaving this here in case I decide to register this.
+# For now this will be installed from github.
 # (shell-command "python setup.py register") to setup user
 # to push to pypi - (shell-command "python setup.py sdist upload")
 
