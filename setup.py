@@ -1,7 +1,6 @@
 # Copyright 2015-2019 John Kitchin
 # (see accompanying license files for details).
 from setuptools import setup
-from glob import glob
 
 setup(name='csearch',
       version='0.0.9',

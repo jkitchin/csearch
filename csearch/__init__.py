@@ -3,22 +3,19 @@
 import argparse
 import glob
 from google.colab import drive
+from IPython import display
 from IPython.core.magic import (register_line_magic, register_cell_magic,
                                 register_line_cell_magic)
 import nbformat
 import numpy as np
-import os
 import re
 import shlex
 from subprocess import getoutput, run
 
 
-import shutil
-if not shutil.which('xattr'):
-    run(['apt-get', 'install', 'xattr'])
-
-if not os.path.isdir('/content/gdrive'):
-    drive.mount('/content/gdrive')
+print('initializing csearch')
+run(['apt-get', 'install', 'xattr'])
+drive.mount('/content/gdrive')
 
 
 @register_line_magic
@@ -47,10 +44,15 @@ def properties(line, cell):
 @register_line_cell_magic
 def todo(line, cell=None):
     '''A todo line/cell magic. It should have [optional duedate] description.
+    This is a line/cell magic.
+    %todo [optional duedate] title
 
+    %%todo [optional duedate] title
+    description
+
+    Note there is not state to indicate if it is done.
     '''
     # %todo use datetime to get an actual date object you can use
-    # %todo should we have a state to indicate if something is done?
     duedate, title, description = None, line, cell
 
     items = line.split()
@@ -67,12 +69,23 @@ class NB:
         '''nbfile is a GDrive path to a notebook.'''
         self.nbfile = nbfile
         self.nb = nbformat.read(nbfile, as_version=4)
+        self.fid = getoutput(f"xattr -p 'user.drive.id' '{self.nbfile}' ")
+
+    def get_url(self, target=None, tooltip=None):
+        '''Return an HTML URL to this file with an optional target.'''
+        url = f'https://colab.research.google.com/drive/{self.fid}'
+        if target:
+            url += f'#scrollTo={target}'
+
+        if tooltip:
+            title = 'title="{tooltip"'
+        else:
+            title = ''
+        return f"<a href=\"{url}\" {title} target=_blank>{self.nbfile}</a>"
 
     def _repr_html_(self):
-        '''returns an HTML link to open this colab.'''
-        fid = getoutput(f"xattr -p 'user.drive.id' '{self.nbfile}' ")
-        return (f"<a href=https://colab.research.google.com/drive/{fid} "
-                f"target=_blank>{self.nbfile}</a>")
+        '''Returns an HTML link to open this colab.'''
+        return self.get_url()
 
     def get_tags(self):
         '''Get a list of unique tags in the notebook.'''
@@ -101,9 +114,9 @@ class NB:
         for cell in self.nb['cells']:
             if cell['cell_type'] == 'markdown':
                 src = cell['source']
+                id = cell['metadata'].get('id', None)
                 if re.search(pattern, src):
-                    return True
-        return False
+                    return self.get_url(id, tooltip=f'Markdown matched {pattern}')
 
     def search_tags(self, pattern):
         '''Search tags for pattern.
@@ -111,9 +124,11 @@ class NB:
         tags = self.get_tags()
 
         if pattern.startswith('!'):
-            return pattern[1:] not in tags
+            if pattern[1:] not in tags:
+                return self.get_url(tooltip=f'Did not match tag: {pattern[1:]}')
         else:
-            return pattern in tags
+            if pattern in tags:
+                return self.get_url(tooltip=f'Matched tag: {pattern}')
 
     def search_headings(self, pattern):
         '''Search headings for pattern. Returns true if a match is found.
@@ -121,12 +136,12 @@ class NB:
         for cell in self.nb['cells']:
             if cell['cell_type'] == 'markdown':
                 src = cell['source']
+                id = cell['metadata'].get('id', None)
                 lines = src.split('\n')
                 for line in lines:
-                    if line.strip().startswith('#'):
+                    if line.startswith('#'):
                         if re.search(pattern, line):
-                            return True
-        return False
+                            return self.get_url(id, tooltip=line)
 
     def search_code(self, pattern):
         '''Search code cells for pattern. Returns true if a match is found.
@@ -134,10 +149,9 @@ class NB:
         for cell in self.nb['cells']:
             if cell['cell_type'] == 'code':
                 src = cell['source']
+                id = cell['metadata'].get('id', None)
                 if re.search(pattern, src):
-                    return True
-
-        return False
+                    return self.get_url(id, tooltip=f'Code matched {pattern}')
 
     def search_todo(self, pattern='.'):
         '''Search cells for todo lines that match pattern.
@@ -146,57 +160,57 @@ class NB:
         '''
         for cell in self.nb['cells']:
             src = cell['source']
+            id = cell['metadata'].get('id', None)
             lines = src.split('\n')
             for line in lines:
+                #         %todo this is not flexible with spaces ...
                 if re.search('\s*%\s*todo', line):
                     if re.search(pattern, line):
-                        print(line)
-                        display(self)
+                        return self.get_url(id, tooltip=line)
 
     def search_properties(self, key, pattern):
         '''Search properties for key matches the pattern.'''
         props = self.get_properties()
         if re.search(pattern, props.get(key, '')):
-            return True
-        else:
-            return False
+            return self.get_url(tooltip=f'Matched property {key} = {pattern}')
 
 
 def find_ipynb(root='', recursive=True):
     '''Find ipynb files in root.
     If you want to search in your Drive, start the root with My Drive.
-    Assumes it is mounted at /content/gdrive.
-
-    Search is with glob, and is recursive by default.
     '''
-    path = '/content/gdrive/' + root + '/**/*.ipynb'
-    found = glob.glob(path, recursive=recursive)
-    return found
+    if not root.startswith('/'):
+        root = '/content/gdrive/' + root
+
+    return glob.glob(root + '/**/*.ipynb',
+                     recursive=recursive)
 
 
-parser = argparse.ArgumentParser(description='Search colab notebooks in GDrive.')
+parser = argparse.ArgumentParser(description='Search Jupyter Notebooks')
 
-parser.add_argument('root', nargs='?', default='', 
+# %todo I do not know how to get the current directory of this colab. That
+# %should be the default.
+parser.add_argument('root', nargs='?', default='',
                     help='Root directory to search in.')
-
+parser.add_argument('pattern', nargs='?', default=None,
+                    help='Pattern to search for.')
 parser.add_argument('-l', '--list', action='store_true',
-                    help='list all notebooks.')
-
-parser.add_argument('-m', '--markdown', nargs='+',
-                    help='Search markdown cells for patterns.')
-                    
-parser.add_argument('-c', '--code', nargs='+',
-                    help='Search code cells for patterns.')
-
+                    help='list all notebooks')
+parser.add_argument('-r', '--recursive', action='store_true',
+                    help='search recursively')
 parser.add_argument('-t', '--tags', nargs='+',
-                    help='Search for tags.')
+                    help='Search for tags')
+parser.add_argument('-f', '--function', nargs='+',
+                    help='Search using a predicate function')
+parser.add_argument('-m', '--markdown', nargs='+',
+                    help='Search markdown cells')
+parser.add_argument('-c', '--code', nargs='+',
+                    help='Search code cells')
 
 parser.add_argument('-p', '--property', nargs='+',
-                    help='Search properties with key=pattern.')
-
+                    help='Search properties with key=pattern')
 parser.add_argument('-d', '--todo', nargs='+',
                     help='Search todo with patterns')
-
 parser.add_argument('-H', '--heading', nargs='+',
                     help='Search headings for patterns')
 
@@ -205,84 +219,62 @@ parser.add_argument('-H', '--heading', nargs='+',
 def csearch(line):
     '''Line magic for searching colab notebooks.'''
     args = parser.parse_args(shlex.split(line))
-    
-    nb = [NB(f) for f in find_ipynb(args.root)]
-
-    # We will accumulate a list of boolean arrays in this that indicate if each file matches a predicate function.
-    P = []
+    nb = [NB(f) for f in find_ipynb(args.root, args.recursive)]
 
     if args.list:
         for f in nb:
             display(f)
         return
 
-    # First search markdown
-    # Then search code
-    if args.markdown is not None:
-        for pattern in args.markdown:
-            P += [[f.search_markdown(pattern) for f in nb]]
- 
-    # Then search code
-    if args.code is not None:
-        for pattern in args.code:
-            P += [[f.search_code(pattern) for f in nb]]
+    # The strategy here is to accumulate a list of lists for each criteria
+    # Each p function will return a url or None
+    P = []
 
-    # Search headings
-    if args.heading is not None:
-        # TODO some context here might also be helpful, but for now I use the
-        # same pattern as above. I don't know how to get links to the heading
-        # anyway.
-        for pattern in args.heading:
-            P += [[f.search_headings(pattern) for f in nb]]
-
-    # Search for tags
     if args.tags is not None:
         for tag in args.tags:
             P += [[f.search_tags(tag) for f in nb]]
 
-    # Search properties
+    if args.function is not None:
+        pfunctions = [globals()[f] for f in args.function]
+        for predicate in pfunctions:
+            P += [[predicate(f) for f in nb]]
+
+    if args.markdown is not None:
+        for pattern in args.markdown:
+            P += [[f.search_markdown(pattern) for f in nb]]
+
+    if args.code is not None:
+        for pattern in args.code:
+            P += [[f.search_code(pattern) for f in nb]]
+
+    if args.heading is not None:
+        for pattern in args.heading:
+            P += [[f.search_headings(pattern) for f in nb]]
+
+    if args.todo is not None:
+        for pattern in args.todo:
+            P += [[f.search_headings(pattern) for f in nb]]
+
     if args.property is not None:
         for pattern in args.property:
             key, pattern = pattern.split('=')
             P += [[f.search_properties(key.strip(), pattern.strip())
                    for f in nb]]
 
-    # Search todo cells
-    if args.todo is not None:
-        for pattern in args.todo:
-            for f in nb:
-                # this will print matching patterns. It is a little different
-                # than the P pattern above. maybe I will change this, it is just
-                # to get some context with the todo line.
-                f.search_todo(pattern)
+    # Now, P is a list of arrays of None or urls. One problem now is how to
+    # decide what to show. I can convert to a boolean array, and see
 
+    bP = np.array(P, dtype=bool)
 
-    # Finally show all files that match all criteria
+    # Any element of inds that is True means we have a file that matches.
     inds = np.all(np.array(P), axis=0)
-    nb = np.array(nb)
 
-    # We make sure we have an iterable collection to show these.
-    from collections.abc import Iterable
-    if isinstance(inds, Iterable):
-        for x in nb[inds]:
-            display(x)
-            
-            
-def csearchf(root, *funcs):
-    '''Search root using predicate funcs.
-    Each func takes one argument, an NB instance, and returns True for a match.
-    '''
-    nb = [NB(f) for f in find_ipynb(root)]
-    P = []
-    
-    for func in funcs:
-        P += [[func(x) for x in nb]]
+    # This will display all the matches.
+    for i, index in inds:
+        if index:
+            for row in P:
+                if row[i]:
+                    display(row[i])
 
-    # Finally show all files that match all criteria
-    inds = np.all(np.array(P), axis=0)
-    nb = np.array(nb)
-    
-    for i, p in enumerate(P):
-        if p:
-            display(nb[i])
 
+print('Done')
