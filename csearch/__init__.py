@@ -302,5 +302,5 @@ def csearchf(root, *funcs):
             for row in P:
                 if row[i]:
                     display(HTML(row[i]))
-                    
+
 print('Done loading csearch')
