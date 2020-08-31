@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='csearch',
-      version='0.0.9',
+      version='0.1.0',
       description='colab utilities for searching notebooks in gdrive',
       url='',
       maintainer='John Kitchin',

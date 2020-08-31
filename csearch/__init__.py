@@ -3,19 +3,30 @@
 import argparse
 import glob
 from google.colab import drive
-from IPython import display
+from IPython.display import HTML
 from IPython.core.magic import (register_line_magic, register_cell_magic,
                                 register_line_cell_magic)
 import nbformat
 import numpy as np
+import os
 import re
 import shlex
 from subprocess import getoutput, run
 
 
 print('initializing csearch')
-run(['apt-get', 'install', 'xattr'])
-drive.mount('/content/gdrive')
+
+import shutil
+
+if not shutil.which('xattr'):
+    print('Installing xattr.')
+    run(['apt-get', 'install', 'xattr'])
+
+MOUNT = '/content/gdrive/'
+
+if not os.path.isdir(MOUNT):
+    print('Mounting your GDrive. You will need to click on the link to get an authentication token.')
+    drive.mount(MOUNT)
 
 
 @register_line_magic
@@ -78,7 +89,7 @@ class NB:
             url += f'#scrollTo={target}'
 
         if tooltip:
-            title = 'title="{tooltip"'
+            title = f'title="{tooltip}"'
         else:
             title = ''
         return f"<a href=\"{url}\" {title} target=_blank>{self.nbfile}</a>"
@@ -115,7 +126,6 @@ class NB:
             if cell['cell_type'] == 'markdown':
                 src = cell['source']
                 id = cell['metadata'].get('id', None)
-                print(cell)
                 if re.search(pattern, src):
                     return self.get_url(id, tooltip=f'Markdown matched {pattern}')
 
@@ -181,10 +191,12 @@ def find_ipynb(root='', recursive=True):
     If you want to search in your Drive, start the root with My Drive.
     '''
     if not root.startswith('/'):
-        root = '/content/gdrive/' + root
+        root = MOUNT + root
 
-    return glob.glob(root + '/**/*.ipynb',
-                     recursive=recursive)
+    found = glob.glob(root + '/**/*.ipynb',
+                      recursive=recursive)
+
+    return found
 
 
 parser = argparse.ArgumentParser(description='Search Jupyter Notebooks')
@@ -193,16 +205,12 @@ parser = argparse.ArgumentParser(description='Search Jupyter Notebooks')
 # %should be the default.
 parser.add_argument('root', nargs='?', default='',
                     help='Root directory to search in.')
-parser.add_argument('pattern', nargs='?', default=None,
-                    help='Pattern to search for.')
+
 parser.add_argument('-l', '--list', action='store_true',
                     help='list all notebooks')
-parser.add_argument('-r', '--recursive', action='store_true',
-                    help='search recursively')
 parser.add_argument('-t', '--tags', nargs='+',
                     help='Search for tags')
-parser.add_argument('-f', '--function', nargs='+',
-                    help='Search using a predicate function')
+
 parser.add_argument('-m', '--markdown', nargs='+',
                     help='Search markdown cells')
 parser.add_argument('-c', '--code', nargs='+',
@@ -220,7 +228,7 @@ parser.add_argument('-H', '--heading', nargs='+',
 def csearch(line):
     '''Line magic for searching colab notebooks.'''
     args = parser.parse_args(shlex.split(line))
-    nb = [NB(f) for f in find_ipynb(args.root, args.recursive)]
+    nb = [NB(f) for f in find_ipynb(args.root)]
 
     if args.list:
         for f in nb:
@@ -234,11 +242,6 @@ def csearch(line):
     if args.tags is not None:
         for tag in args.tags:
             P += [[f.search_tags(tag) for f in nb]]
-
-    if args.function is not None:
-        pfunctions = [globals()[f] for f in args.function]
-        for predicate in pfunctions:
-            P += [[predicate(f) for f in nb]]
 
     if args.markdown is not None:
         for pattern in args.markdown:
@@ -254,7 +257,7 @@ def csearch(line):
 
     if args.todo is not None:
         for pattern in args.todo:
-            P += [[f.search_headings(pattern) for f in nb]]
+            P += [[f.search_todo(pattern) for f in nb]]
 
     if args.property is not None:
         for pattern in args.property:
@@ -268,14 +271,36 @@ def csearch(line):
     bP = np.array(P, dtype=bool)
 
     # Any element of inds that is True means we have a file that matches.
-    inds = np.all(np.array(P), axis=0)
+    inds = np.all(np.array(bP), axis=0)
 
     # This will display all the matches.
-    for i, index in inds:
-        if index:
+    for i, match in enumerate(inds):
+        if match:
             for row in P:
                 if row[i]:
-                    display(row[i])
+                    display(HTML(row[i]))
 
 
-print('Done')
+def csearchf(root, *funcs):
+    '''Search root using predicate funcs.
+    Each func takes one argument, an NB instance, and returns True for a match.
+    '''
+    nb = [NB(f) for f in find_ipynb(root)]
+    P = []
+
+    for func in funcs:
+        P += [[func(x) for x in nb]]
+
+    bP = np.array(P, dtype=bool)
+
+    # Any element of inds that is True means we have a file that matches.
+    inds = np.all(np.array(bP), axis=0)
+
+    # This will display all the matches.
+    for i, match in enumerate(inds):
+        if match:
+            for row in P:
+                if row[i]:
+                    display(HTML(row[i]))
+                    
+print('Done loading csearch')
