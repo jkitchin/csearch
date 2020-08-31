@@ -13,8 +13,9 @@ import shlex
 from subprocess import getoutput, run
 
 
-print('initializing csearch')
-run(['apt-get', 'install', 'xattr'])
+import shutil
+if not shutil.which('xattr'):
+    run(['apt-get', 'install', 'xattr'])
 
 if not os.path.isdir('/content/gdrive'):
     drive.mount('/content/gdrive')
@@ -49,6 +50,7 @@ def todo(line, cell=None):
 
     '''
     # %todo use datetime to get an actual date object you can use
+    # %todo should we have a state to indicate if something is done?
     duedate, title, description = None, line, cell
 
     items = line.split()
@@ -121,7 +123,7 @@ class NB:
                 src = cell['source']
                 lines = src.split('\n')
                 for line in lines:
-                    if line.startswith('#'):
+                    if line.strip().startswith('#'):
                         if re.search(pattern, line):
                             return True
         return False
@@ -146,7 +148,6 @@ class NB:
             src = cell['source']
             lines = src.split('\n')
             for line in lines:
-                #         %todo this is not flexible with spaces ...
                 if re.search('\s*%\s*todo', line):
                     if re.search(pattern, line):
                         print(line)
@@ -164,41 +165,34 @@ class NB:
 def find_ipynb(root='', recursive=True):
     '''Find ipynb files in root.
     If you want to search in your Drive, start the root with My Drive.
+    Assumes it is mounted at /content/gdrive.
+
+    Search is with glob, and is recursive by default.
     '''
-    if not root.startswith('/'):
-        root = '/content/gdrive/' + root
-
-    return glob.glob(root + '/**/*.ipynb',
-                     recursive=recursive)
+    path = '/content/gdrive/' + root + '/**/*.ipynb'
+    found = glob.glob(path, recursive=recursive)
+    return found
 
 
-parser = argparse.ArgumentParser(description='Search Jupyter Notebooks')
+parser = argparse.ArgumentParser(description='Search colab notebooks in GDrive.')
 
-# %todo I do not know how to get the current directory of this colab. That
-# %should be the default.
-parser.add_argument('root', nargs='?', default='',
+parser.add_argument('root', nargs='?', default='', 
                     help='Root directory to search in.')
 
-parser.add_argument('pattern', nargs='?', default=None,
-                    help='Pattern to search for (default is to only search markdown.')
-
 parser.add_argument('-l', '--list', action='store_true',
-                    help='list all notebooks')
+                    help='list all notebooks.')
 
-parser.add_argument('-r', '--recursive', action='store_true',
-                    help='search recursively')
+parser.add_argument('-m', '--markdown', nargs='+',
+                    help='Search markdown cells for patterns.')
+                    
+parser.add_argument('-c', '--code', nargs='+',
+                    help='Search code cells for patterns.')
 
 parser.add_argument('-t', '--tags', nargs='+',
-                    help='Search for tags')
-
-parser.add_argument('-f', '--function', nargs='+',
-                    help='Search using a predicate function')
-
-parser.add_argument('-c', '--code', nargs='+',
-                    help='Search code cells')
+                    help='Search for tags.')
 
 parser.add_argument('-p', '--property', nargs='+',
-                    help='Search properties with key=pattern')
+                    help='Search properties with key=pattern.')
 
 parser.add_argument('-d', '--todo', nargs='+',
                     help='Search todo with patterns')
@@ -211,8 +205,10 @@ parser.add_argument('-H', '--heading', nargs='+',
 def csearch(line):
     '''Line magic for searching colab notebooks.'''
     args = parser.parse_args(shlex.split(line))
-    nb = [NB(f) for f in find_ipynb(args.root, args.recursive)]
+    
+    nb = [NB(f) for f in find_ipynb(args.root)]
 
+    # We will accumulate a list of boolean arrays in this that indicate if each file matches a predicate function.
     P = []
 
     if args.list:
@@ -221,14 +217,13 @@ def csearch(line):
         return
 
     # First search markdown
-    if args.pattern:
-        for pattern in args.pattern:
+    # Then search code
+    if args.markdown is not None:
+        for pattern in args.markdown:
             P += [[f.search_markdown(pattern) for f in nb]]
-
+ 
     # Then search code
     if args.code is not None:
-        if args.code == []:
-            args.code = args.pattern
         for pattern in args.code:
             P += [[f.search_code(pattern) for f in nb]]
 
@@ -261,12 +256,6 @@ def csearch(line):
                 # to get some context with the todo line.
                 f.search_todo(pattern)
 
-    # Finally, we try the function search
-    if args.function is not None:
-        pfunctions = [eval(f, globals()) for f in args.function]
-        print(pfunctions)
-        for predicate in pfunctions:
-            P += [[predicate(f) for f in nb]]
 
     # Finally show all files that match all criteria
     inds = np.all(np.array(P), axis=0)
@@ -277,6 +266,23 @@ def csearch(line):
     if isinstance(inds, Iterable):
         for x in nb[inds]:
             display(x)
+            
+            
+def csearchf(root, *funcs):
+    '''Search root using predicate funcs.
+    Each func takes one argument, an NB instance, and returns True for a match.
+    '''
+    nb = [NB(f) for f in find_ipynb(root)]
+    P = []
+    
+    for func in funcs:
+        P += [[func(x) for x in nb]]
 
+    # Finally show all files that match all criteria
+    inds = np.all(np.array(P), axis=0)
+    nb = np.array(nb)
+    
+    for i, p in enumerate(P):
+        if p:
+            display(nb[i])
 
-print('Done')
