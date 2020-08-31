@@ -115,6 +115,7 @@ class NB:
             if cell['cell_type'] == 'markdown':
                 src = cell['source']
                 id = cell['metadata'].get('id', None)
+                print(cell)
                 if re.search(pattern, src):
                     return self.get_url(id, tooltip=f'Markdown matched {pattern}')
 
